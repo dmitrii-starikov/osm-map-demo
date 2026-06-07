@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OSM · Камчатка</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f12;
+      --surface:  #161a1f;
+      --border:   #252b33;
+      --accent:   #e8572a;
+      --accent2:  #f0a050;
+      --text:     #c8d0d8;
+      --dim:      #5a6472;
+      --r:        4px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px; overflow: hidden; }
+
+    #map { position: absolute; inset: 0; z-index: 0; }
+
+    .leaflet-control-zoom { display: none; }
+    .leaflet-control-attribution {
+      background: rgba(13,15,18,.8) !important;
+      color: var(--dim) !important;
+      font-family: 'IBM Plex Mono', monospace !important;
+      font-size: 10px !important;
+      border-radius: var(--r) !important;
+    }
+    .leaflet-control-attribution a { color: var(--accent2) !important; }
+
+    /* Header */
+    #header {
+      position: absolute; top: 20px; left: 20px; z-index: 1000;
+      pointer-events: none;
+    }
+    #header h1 {
+      font-family: 'Bebas Neue', sans-serif; font-size: 42px;
+      letter-spacing: 4px; line-height: 1; color: #fff;
+      text-shadow: 0 2px 24px rgba(232,87,42,.5);
+    }
+    #header .sub {
+      font-size: 10px; letter-spacing: 2.5px;
+      color: var(--accent); text-transform: uppercase; margin-top: 2px;
+    }
+
+    /* Controls */
+    #controls {
+      position: absolute; right: 20px; top: 20px;
+      z-index: 1000; display: flex; flex-direction: column; gap: 8px;
+    }
+    .ctrl-group {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); overflow: hidden;
+    }
+    .ctrl-label {
+      padding: 5px 12px 4px; font-size: 9px; letter-spacing: 2px;
+      color: var(--dim); text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    .ctrl-btn {
+      display: flex; align-items: center; gap: 8px;
+      background: none; border: none; color: var(--text);
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+      padding: 9px 14px; cursor: pointer; width: 100%; text-align: left;
+      transition: background .15s, color .15s;
+    }
+    .ctrl-btn + .ctrl-btn { border-top: 1px solid var(--border); }
+    .ctrl-btn:hover  { background: rgba(232,87,42,.12); color: #fff; }
+    .ctrl-btn:active { background: rgba(232,87,42,.22); }
+    .ctrl-btn .ic    { font-size: 13px; width: 16px; text-align: center; color: var(--accent); }
+
+    /* Status bar */
+    #status {
+      position: absolute; bottom: 20px; left: 20px; right: 20px;
+      z-index: 1000; display: flex; align-items: center; gap: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 8px 14px; pointer-events: none;
+    }
+    .stat { display: flex; flex-direction: column; gap: 1px; }
+    .stat-label { font-size: 9px; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; }
+    .stat-value { font-size: 12px; color: var(--text); }
+    .stat-value.hi { color: var(--accent2); }
+    .sep { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
+
+    #rstat { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--dim); }
+    #rdot  { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); transition: background .3s; }
+    #rdot.loading { background: var(--accent); animation: pulse 1s infinite; }
+    #rdot.ok      { background: #4caf82; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="header">
+  <h1 data-i18n="title">КАМЧАТКА</h1>
+  <div class="sub" data-i18n="sub">OSM · собственный тайловый сервер</div>
+</div>
+
+<div id="controls">
+
+  <div class="ctrl-group">
+    <button class="ctrl-btn" onclick="toggleLang()">
+      <span class="ic">⇄</span><span data-i18n="lang">EN</span>
+    </button>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label" data-i18n="nav">Навигация</div>
+    <button class="ctrl-btn" onclick="map.zoomIn()">
+      <span class="ic">＋</span><span data-i18n="zoomIn">Приблизить</span>
+    </button>
+    <button class="ctrl-btn" onclick="map.zoomOut()">
+      <span class="ic">－</span><span data-i18n="zoomOut">Отдалить</span>
+    </button>
+    <button class="ctrl-btn" onclick="resetView()">
+      <span class="ic">◎</span><span data-i18n="reset">Сбросить вид</span>
+    </button>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label" data-i18n="places">Точки</div>
+    <button class="ctrl-btn" onclick="flyTo(53.0200,158.6471,12)">
+      <span class="ic">▸</span><span data-i18n="pk">Петропавловск</span>
+    </button>
+    <button class="ctrl-btn" onclick="flyTo(53.1865,158.3837,12)">
+      <span class="ic">▸</span><span data-i18n="yel">Елизово</span>
+    </button>
+    <button class="ctrl-btn" onclick="flyTo(52.9597,158.2514,13)">
+      <span class="ic">▸</span><span data-i18n="par">Паратунка</span>
+    </button>
+    <button class="ctrl-btn" onclick="flyTo(52.8862,158.7037,13)">
+      <span class="ic">▸</span><span data-i18n="cape">Мыс Маячный</span>
+    </button>
+    <button class="ctrl-btn" onclick="togglePolygon()">
+      <span class="ic" id="poly-ic">▰</span><span data-i18n="area">Область рендера</span>
+    </button>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label" data-i18n="zoom">Зум</div>
+    <button class="ctrl-btn" onclick="map.setZoom(5)">
+      <span class="ic">·</span><span data-i18n="z5">z5 — регион</span>
+    </button>
+    <button class="ctrl-btn" onclick="map.setZoom(8)">
+      <span class="ic">·</span><span data-i18n="z8">z8 — полуостров</span>
+    </button>
+    <button class="ctrl-btn" onclick="map.setZoom(11)">
+      <span class="ic">·</span><span data-i18n="z11">z11 — город</span>
+    </button>
+  </div>
+
+</div>
+
+<div id="status">
+  <div class="stat">
+    <div class="stat-label" data-i18n="lat">Широта</div>
+    <div class="stat-value hi" id="s-lat">—</div>
+  </div>
+  <div class="sep"></div>
+  <div class="stat">
+    <div class="stat-label" data-i18n="lon">Долгота</div>
+    <div class="stat-value hi" id="s-lon">—</div>
+  </div>
+  <div class="sep"></div>
+  <div class="stat">
+    <div class="stat-label" data-i18n="zoom">Зум</div>
+    <div class="stat-value" id="s-zoom">—</div>
+  </div>
+  <div class="sep"></div>
+  <div class="stat">
+    <div class="stat-label" data-i18n="tserver">Тайловый сервер</div>
+    <div class="stat-value">localhost:8080</div>
+  </div>
+  <div id="rstat">
+    <div id="rdot"></div>
+    <span id="rlabel">—</span>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const HOME = { lat: 53.05, lon: 158.65, zoom: 9 };
+
+  // ── i18n: UI chrome strings (map tile labels are a separate concern) ─────────
+  const I18N = {
+    ru: { title:'КАМЧАТКА', sub:'OSM · собственный тайловый сервер',
+          nav:'Навигация', zoomIn:'Приблизить', zoomOut:'Отдалить', reset:'Сбросить вид',
+          places:'Точки', pk:'Петропавловск', yel:'Елизово', par:'Паратунка',
+          cape:'Мыс Маячный', area:'Область рендера',
+          zoom:'Зум', z5:'z5 — регион', z8:'z8 — полуостров', z11:'z11 — город',
+          lat:'Широта', lon:'Долгота', tserver:'Тайловый сервер',
+          idle:'ожидание', rendering:'рендер', loaded:'загружено', lang:'EN' },
+    en: { title:'KAMCHATKA', sub:'OSM · self-hosted tile server',
+          nav:'Navigation', zoomIn:'Zoom in', zoomOut:'Zoom out', reset:'Reset view',
+          places:'Places', pk:'Petropavlovsk', yel:'Yelizovo', par:'Paratunka',
+          cape:'Cape Mayachny', area:'Rendered area',
+          zoom:'Zoom', z5:'z5 — region', z8:'z8 — peninsula', z11:'z11 — city',
+          lat:'Latitude', lon:'Longitude', tserver:'Tile server',
+          idle:'idle', rendering:'rendering', loaded:'loaded', lang:'RU' },
+  };
+  let lang = 'ru';
+
+  function applyLang(l) {
+    lang = l;
+    document.documentElement.lang = l;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = I18N[l][el.dataset.i18n];
+    });
+    // swap the basemap to the chosen language (en tiles render on demand)
+    if (activeTileLayer) map.removeLayer(activeTileLayer);
+    activeTileLayer = tileLayers[l].addTo(map);
+    updateMarkers();   // marker labels follow the UI language
+    updateRstat();     // refresh the render-status text
+  }
+  function toggleLang() { applyLang(lang === 'ru' ? 'en' : 'ru'); }
+
+  const map = L.map('map', {
+    center: [HOME.lat, HOME.lon],
+    zoom:   HOME.zoom,
+    minZoom: 2, maxZoom: 14,
+    zoomControl: false,
+  });
+
+  // Two tile layers: native names (/osm/) and English (/osm-en/, rendered on demand).
+  // applyLang() swaps the active one when the RU/EN button is toggled.
+  const ATTR = '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors | self-hosted tiles';
+  const tileLayers = {
+    ru: L.tileLayer('/osm/{z}/{x}/{y}.png',    { maxZoom: 14, attribution: ATTR }),
+    en: L.tileLayer('/osm-en/{z}/{x}/{y}.png', { maxZoom: 14, attribution: ATTR }),
+  };
+  let activeTileLayer = null;
+
+  // Markers (labels switch with the UI language)
+  const places = [
+    { lat: 53.1865, lon: 158.3837, ru: 'Елизово',                   en: 'Yelizovo' },
+    { lat: 53.0200, lon: 158.6471, ru: 'Петропавловск-Камчатский',  en: 'Petropavlovsk-Kamchatsky' },
+    { lat: 52.8862, lon: 158.7037, ru: 'Мыс Маячный',               en: 'Cape Mayachny' },
+    { lat: 52.9597, lon: 158.2514, ru: 'Паратунка',                 en: 'Paratunka' },
+  ];
+
+  const mkIcon = name => L.divIcon({
+    html: `
+      <div style="width:8px;height:8px;border-radius:50%;background:#e8572a;
+        box-shadow:0 0 0 2px #0d0f12,0 0 0 3px #e8572a;"></div>
+      <div style="position:absolute;top:13px;left:50%;transform:translateX(-50%);
+        white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:10px;
+        color:#fff;text-shadow:0 1px 4px #000;letter-spacing:.5px;">${name}</div>`,
+    iconSize: [8,8], iconAnchor: [4,4], className: '',
+  });
+
+  const markersLayer = L.layerGroup().addTo(map);
+
+  function updateMarkers() {
+    markersLayer.clearLayers();
+    if (map.getZoom() < 7) return;
+    const showLabel = map.getZoom() >= 9;
+    places.forEach(p =>
+      L.marker([p.lat, p.lon], { icon: mkIcon(showLabel ? p[lang] : '') })
+       .addTo(markersLayer)
+    );
+  }
+
+  // Outline of the pre-rendered Kamchatka area (slightly inset from the render bbox)
+  const polygon = L.rectangle(
+    [[52.2, 157.8], [53.8, 159.6]],
+    { color:'#e8572a', weight:1.5, opacity:.6,
+      fillColor:'#e8572a', fillOpacity:.06, dashArray:'5 5' }
+  ).addTo(map);
+  let polyVisible = true;
+
+  function togglePolygon() {
+    if (polyVisible) { map.removeLayer(polygon); document.getElementById('poly-ic').textContent='▱'; }
+    else             { polygon.addTo(map);       document.getElementById('poly-ic').textContent='▰'; }
+    polyVisible = !polyVisible;
+  }
+
+  // Status bar
+  function updateStatus() {
+    const c = map.getCenter();
+    document.getElementById('s-lat').textContent  = c.lat.toFixed(4) + '°';
+    document.getElementById('s-lon').textContent  = c.lng.toFixed(4) + '°';
+    document.getElementById('s-zoom').textContent = map.getZoom();
+    updateMarkers();
+  }
+
+  map.on('move zoom moveend', updateStatus);
+  map.on('mousemove', e => {
+    document.getElementById('s-lat').textContent = e.latlng.lat.toFixed(4) + '°';
+    document.getElementById('s-lon').textContent = e.latlng.lng.toFixed(4) + '°';
+  });
+
+  // Render status
+  const dot = document.getElementById('rdot');
+  const lbl = document.getElementById('rlabel');
+  const tl  = document.querySelector('.leaflet-tile-pane');
+
+  function updateRstat() {
+    const loading = document.querySelectorAll('img.leaflet-tile:not(.leaflet-tile-loaded)').length;
+    if (loading > 0) { dot.className = 'loading'; lbl.textContent = `${I18N[lang].rendering} (${loading})...`; }
+    else             { dot.className = 'ok';      lbl.textContent = I18N[lang].loaded; }
+  }
+
+  // Track tile loading via MutationObserver
+  const obs = new MutationObserver(updateRstat);
+  obs.observe(tl, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+  // Controls
+  function resetView() { map.flyTo([HOME.lat, HOME.lon], HOME.zoom, { duration: 1.2 }); }
+  function flyTo(lat, lon, zoom) { map.flyTo([lat, lon], zoom, { duration: 1.2 }); }
+
+  applyLang('ru');
+  updateStatus();
+</script>
+</body>
+</html>

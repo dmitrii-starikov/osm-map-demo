@@ -1,0 +1,62 @@
+# compose.yml — OSM Tile Server Demo (Kamchatka)
+# Run: make setup (first time) / make start (afterwards)
+#
+# The overv/openstreetmap-tile-server image is self-contained: it runs its own
+# PostgreSQL+PostGIS inside (data in the osm-data:/data/database volume), so a
+# separate DB service is not needed. Do NOT set PGHOST/PGUSER/...: get-external-data.py
+# reads them via psycopg2 and with PGHOST it would import the water polygons into the
+# wrong database.
+
+services:
+
+  # ── renderd + mod_tile + osm-carto + internal PostgreSQL ───────────────────
+  tile-server:
+    # Custom image = prebuilt overv image + our Postgres tuning baked in (docker/Dockerfile).
+    # To use the stock image instead, comment `build` and uncomment `image`:
+    # image: overv/openstreetmap-tile-server:2.3.0
+    build: ./docker
+    image: osm-demo-tile-server:2.3.0
+    container_name: osm-tiles
+    command: run
+    environment:
+      THREADS: 4
+      UPDATES: disabled
+      # Give Postgres time to finish crash-recovery after a hard kill — the image's
+      # entrypoint aborts (set -e) if `service postgresql start` times out (default 60s),
+      # which on a dirty DB leaves the container in an exit loop.
+      PGCTLTIMEOUT: "300"
+    volumes:
+      - osm-data:/data/database
+      # Rendered tiles are bind-mounted to ./tiles so they are visible on the host.
+      # (The DB stays a named volume — raw Postgres files aren't useful to browse.)
+      - ./tiles:/data/tiles
+      # The image reads the PBF from the fixed path /data/region.osm.pbf
+      - ./data/region.osm.pbf:/data/region.osm.pbf
+      # IMPORTANT: do not mount a custom renderd.conf — the image edits it with `sed -i`,
+      # and a single-file bind mount breaks that (Device or resource busy).
+      # Thread count comes from THREADS, the style from /data/style/mapnik.xml.
+    ports:
+      - "8080:80"
+    networks:
+      - osm-net
+
+  # ── Web UI (nginx + Leaflet) ──────────────────────────────────────────────
+  web:
+    image: nginx:alpine
+    container_name: osm-web
+    depends_on:
+      - tile-server
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3000:80"
+    networks:
+      - osm-net
+
+volumes:
+  osm-data:
+
+networks:
+  osm-net:
+    driver: bridge

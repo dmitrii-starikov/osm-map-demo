@@ -1,0 +1,8 @@
+# Downloaded OSM dumps + cropped region
+/data/
+
+# Rendered tiles (bind-mounted from the tile-server)
+/tiles/
+
+# JetBrains IDE
+/.idea/

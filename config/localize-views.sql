@@ -1,15 +1,11 @@
--- localize-views.sql — per-language schemas of views over the osm2pgsql tables where the
+-- localize-views.sql - per-language schemas of views over the osm2pgsql tables where the
 -- `name` column is replaced by COALESCE(tags->'name:<lang>', name). The localized tile
 -- layers (mapnik-<lang>.xml → /tile-<lang>/) read from these, so the same osm-carto style
 -- renders localized labels without editing 90 KB of CartoCSS and without mutating the data.
 --
--- This is the proper way to localize labels — earlier the demo did it with a destructive
--- `UPDATE planet_osm_* SET name = tags->'name:ru'`, which overwrote data (revert = re-import).
--- Views are non-destructive and let several languages coexist as separate layers.
---
 -- Applied once by `make localize` (after import). Add languages to the array as needed;
 -- the demo only serves `en` live (on Kamchatka the native `name` is already Russian, so
--- the default /osm/ layer IS the Russian map — no separate ru layer needed).
+-- the default /osm/ layer IS the Russian map - no separate ru layer needed).
 
 DO $$
 DECLARE

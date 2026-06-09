@@ -8,7 +8,7 @@
 # created at runtime by `make localize`, since they need the imported tables.
 FROM overv/openstreetmap-tile-server:2.3.0
 
-# 1) Postgres tuning — appended to the image's template (createPostgresConfig copies it
+# 1) Postgres tuning - appended to the image's template (createPostgresConfig copies it
 #    into conf.d on start; Postgres takes the last value, so ours override the defaults).
 COPY postgresql-tuning.conf /tmp/postgresql-tuning.conf
 RUN cat /tmp/postgresql-tuning.conf >> /etc/postgresql/14/main/postgresql.custom.conf.tmpl
@@ -23,7 +23,7 @@ RUN set -e; \
     sed -E 's/\bplanet_osm_(point|line|polygon|roads)\b/en.planet_osm_\1/g' mapnik.xml > mapnik-en.xml
 
 # 3) Register the English layer with renderd (/tile-en/) and apache. Both baked, so they
-#    load on container start and survive recreation — no runtime patching of these files.
+#    load on container start and survive recreation - no runtime patching of these files.
 #    renderd.conf is an explicit file (with [default] + [en]); apache gets the AddTileConfig.
 COPY renderd.conf /etc/renderd.conf
 RUN sed -i '/AddTileConfig \/tile\/ default/a\    AddTileConfig /tile-en/ en' /etc/apache2/sites-available/000-default.conf

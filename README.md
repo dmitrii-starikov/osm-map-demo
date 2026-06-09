@@ -1,28 +1,32 @@
 # OSM Tile Server Demo — Kamchatka
 
 A self-hosted OpenStreetMap raster tile server for the Petropavlovsk–Yelizovo–Paratunka
-area of Kamchatka, shown as a small Leaflet web map. Built on the all-in-one
-[`overv/openstreetmap-tile-server`](https://github.com/Overv/openstreetmap-tile-server)
-image (renderd + mod_tile + osm-carto + PostgreSQL/PostGIS in one container) with an
-nginx front-end.
+area of Kamchatka, shown as a small Leaflet web map. Built on a small custom image — the
+all-in-one [`overv/openstreetmap-tile-server`](https://github.com/Overv/openstreetmap-tile-server)
+(renderd + mod_tile + osm-carto + PostgreSQL/PostGIS in one container) plus our baked
+config — with an nginx front-end.
 
-This is the **hands-on companion** to [`osm-tile-server-article.md`](./osm-tile-server-article.md):
-the article covers a planet-scale server on bare metal; this demo runs the same pipeline
-laptop-sized and exposes the article's **tuning techniques as runnable `make` targets**.
+This is the **hands-on companion** to the two-part write-up:
+[Part 1 — how a tile server works](./osm-tile-server-1-howitworks.md) and
+[Part 2 — running it at planet scale](./osm-tile-server-2-production.md). The articles cover
+the stack and a planet-scale server on bare metal; this demo runs the same pipeline
+laptop-sized and exposes the tuning techniques as runnable `make` targets.
 
 ## Architecture
 
 ```
 PBF dump → osmium (crop to bbox) → osm2pgsql → PostGIS → renderd → Apache/mod_tile
-                                                                          │
+                                                                           │
                                             nginx (/osm/ → /tile/) ◄───────┘
                                                   │
                                               Leaflet (web/index.html)
 ```
 
-- **tile-server** — the overv image. Runs its own PostgreSQL, imports the PBF, builds the
-  osm-carto style, and serves tiles at `/tile/` on port 8080.
-- **web** — nginx serving the Leaflet map on port 3000 and proxying `/osm/` to `/tile/`.
+- **tile-server** — our custom image (overv base + baked config). Runs its own PostgreSQL,
+  imports the PBF, builds the osm-carto style, and serves tiles at `/tile/` (plus the English
+  layer at `/tile-en/`) on port 8080.
+- **web** — nginx serving the Leaflet map on port 3000 and proxying `/osm/` to `/tile/`
+  (and `/osm-en/` to `/tile-en/`).
 
 ## Quick start
 
@@ -31,12 +35,15 @@ make setup
 ```
 
 Downloads the Far-Eastern district PBF (~360 MB), crops it to the Kamchatka bbox, imports
-it, starts the services, and pre-renders zooms 0–10. First run ≈ 5–10 min (most of it
-importing the global water polygons osm-carto needs for coastlines). Then:
+it, builds the custom image, starts the services, sets up the English layer, and pre-renders
+zooms 0–10. First run ≈ 5–10 min (most of it importing the global water polygons osm-carto
+needs for coastlines). Then:
 
 - Map: http://localhost:3000  (the **RU/EN** button switches the interface)
 - Tiles: http://localhost:8080/osm/10/961/331.png
 - renderd status: http://localhost:8080/mod_tile
+
+![demo.gif](demo.gif)
 
 Requirements: Docker + Docker Compose v2, and ~7 GB free disk for the default region
 (see the cost table below).
@@ -85,9 +92,9 @@ WITHOUT index:      Seq Scan …     ~1250 ms     →  ≈ 740× faster
 
 This holds up even on a tiny region because the queried table — global coastline
 `water_polygons` (~1.2 GB) — is the **same size regardless of region**. Note this ~740× is
-a *single query*; the article's ~150× is a *whole tile render* (dozens of such queries).
-Same mechanism (`index scan` vs `seq scan`), different metric. The index itself is
-`indexes.sql` from osm-carto, which the image runs automatically at import.
+a *single query*; [Part 2](./osm-tile-server-2-production.md)'s ~150× is a *whole tile render*
+(dozens of such queries). Same mechanism (`index scan` vs `seq scan`), different metric. The
+index itself is `indexes.sql` from osm-carto, which the image runs automatically at import.
 
 **Render benchmark — on-demand vs cache:** `make render-benchmark` fetches a 10×10 tile
 block at z13 (not pre-rendered) twice — the first pass renders on demand, the second hits
@@ -131,8 +138,9 @@ data that every import pulls.
 | USA | ~11 GB | ~100 GB+ | hours | no |
 | Planet | ~70 GB | ~1.7 TB | ~5 days | server only |
 
-For the planet, follow the bare-metal path in the article (tuned Postgres, separate
-volumes, chunked rendering) — Docker is for experimenting, not for the planet.
+For the planet, follow the bare-metal path in [Part 2](./osm-tile-server-2-production.md)
+(tuned Postgres, separate volumes, chunked rendering) — Docker is for experimenting, not for
+the planet.
 
 ## Layout
 
@@ -141,7 +149,7 @@ compose.yml         services: tile-server (built from docker/) + web
 Makefile            build / run / render + tuning targets
 docker/
   Dockerfile        custom image = overv image + baked tuning + English layer
-  postgresql-tuning.conf  Postgres tuning, baked in and APPLIED (see note)
+  postgresql-tuning.conf  modest Postgres tuning, baked in & applied (see note)
   renderd.conf      renderd config ([default] + [en] layers), baked in
 config/
   nginx.conf        web UI + /osm/ → /tile/ and /osm-en/ → /tile-en/ proxies
@@ -164,7 +172,9 @@ tiles/              rendered tiles, bind-mounted from the container (gitignored)
   layer (`mapnik-en.xml` + apache config). Baked, so
   it all survives container recreation — only the DB `en` views are created at runtime
   (`make localize`). To use the stock image instead, flip the `image:`/`build:` lines in
-  `compose.yml`. Tuning values are for ~16 GB RAM; the article covers planet-scale 64 GB.
+  `compose.yml`. The tuning values are deliberately **modest** — aggressive ones (e.g.
+  `shared_buffers=4GB`) OOM-kill the import on a memory-constrained machine, so the demo stays
+  safe to run anywhere. [Part 2](./osm-tile-server-2-production.md) has the real 64 GB tuning.
 - **Why bake config instead of bind-mounting it?** The image `sed -i`'s its own configs on
   start; a single-file bind mount breaks that ("Device or resource busy"). Baked files are
   normal files, so the image's sed works and our config persists.
@@ -174,4 +184,3 @@ tiles/              rendered tiles, bind-mounted from the container (gitignored)
   Makefile pre-creates `./tiles` with open perms before any `docker compose` command —
   otherwise Docker creates it as root and rendering fails. The image's entrypoint must run
   as root (initdb/postgres/apache), so setting `user:` on the container is not an option.
-```

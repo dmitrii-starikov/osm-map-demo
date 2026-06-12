@@ -112,12 +112,13 @@ _* Planet numbers are from the article's setup (HDD, single-threaded, no flat-no
 ```
 compose.yml         services: tile-server (built from docker/) + web
 Makefile            build / run / render + tuning targets
+config/
+  nginx.conf        web UI + /osm/ → /tile/, /osm-en/ → /tile-en/ proxies
+  localize-views.sql  Postgres views with name:en
 docker/
   Dockerfile        custom image
   postgresql-tuning.conf  modest Postgres tuning, baked in & applied
   renderd.conf      renderd config ([default] + [en] layers)
-  nginx.conf        web UI + /osm/ → /tile/, /osm-en/ → /tile-en/ proxies
-  localize-views.sql  Postgres views with name:en
 web/index.html      Leaflet map
 data/               downloaded + cropped PBF (git ignored)
 tiles/              rendered tiles, bind-mounted from the container volume (git ignored)

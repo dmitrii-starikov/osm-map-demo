@@ -1,7 +1,12 @@
 # OSM Tile Server Demo — Kamchatka
 
-A self-hosted OpenStreetMap raster tile server for the Kamchatka peninsula, shown as a small Leaflet web map. Built on the custom image all-in-one [`overv/openstreetmap-tile-server`](https://github.com/Overv/openstreetmap-tile-server)
-(renderd + mod_tile + osm-carto + PostgreSQL/PostGIS in one container) plus our baked config with nginx frontend.
+A self-hosted OpenStreetMap raster tile server for the Kamchatka peninsula, shown as a small Leaflet web map. Built on the all-in-one image [`overv/openstreetmap-tile-server`](https://github.com/Overv/openstreetmap-tile-server) _(renderd + mod_tile + osm-carto + PostgreSQL/PostGIS in one container)_ plus our baked config with nginx frontend.
+
+This is the hands-on companion for the articles:
+- [Part I]()
+- [Part II]()
+
+---
 
 ## Architecture
 
@@ -13,16 +18,16 @@ PBF dump → osmium (crop to bbox) → osm2pgsql → PostGIS → renderd → Apa
                                               Leaflet (web/index.html)
 ```
 
-- **tile-server** is our custom image (overv base + baked config). Runs its own PostgreSQL, imports the PBF, builds the osm-carto style, and serves native tiles at `/tile/` (plus the English  layer at `/tile-en/`) on port 8080.
-- **web** - nginx serving the Leaflet map on port 3000 and proxying `/osm/` to `/tile/`  (and `/osm-en/` to `/tile-en/`).
+- **tile-server** is our custom image (overv base + baked config). Runs its own PostgreSQL, imports the PBF, builds the osm-carto style, and serves native tiles at `/tile/` (plus the English layer at `/tile-en/`) on port 8080.
+- **web** - nginx serving the Leaflet map on port 3000 and proxying `/osm/` to `/tile/` (and `/osm-en/` to `/tile-en/`).
 
 ## Quick start
 
 Just `make setup`. 
 
-It downloads the Far-Eastern district PBF (~360 MB), crops it to the Kamchatka bbox, imports it to database, builds the custom image, starts the services, sets up the English layer, and pre-renders zooms 0-10. First run around 5-10 min (most of it importing the global water polygons osm-carto needs for coastlines). Then:
+It downloads the Far-Eastern district PBF (~360 MB), crops it to the Kamchatka bbox, imports it into database, builds the custom image, starts the services, sets up the English layer, and pre-renders zooms 0-10. First run around 10-15 min (most of it importing the global water polygons osm-carto needs for coastlines). Then:
 
-- Map: http://localhost:3000  (the **RU/EN** button switches the interface)
+- Map: http://localhost:3000 (the **RU/EN** button switches the interface)
 - Tiles: http://localhost:8080/osm/10/961/331.png
 - renderd status: http://localhost:8080/mod_tile
 
@@ -38,7 +43,7 @@ Requirements: Docker + Docker Compose v2, and around 7 GB free disk for the defa
 | `make build`                                | Build the custom image (overv + tuning)                |
 | `make localize`                             | Create the `en` DB views and load the English layer    |
 | `make start` · `make stop` · `make restart` | Manage the containers without rebuilding               |
-| `make render` / `make render-high`          | Pre-render z0–z10 / z11                                |
+| `make render` / `make render-high`          | Pre-render z0–z10 / z11     only                       |
 | `make clear-tiles`                          | Delete rendered tiles (keeps the DB)                   |
 | `make status`                               | Containers, DB size, tiles on disk                     |
 | `make logs` · `make logs-tiles`             | Follow logs                                            |
@@ -68,8 +73,7 @@ WITHOUT index:      Seq Scan …     ~1250 ms     →  ≈ 740x faster
 ```
 
 This holds up even on a tiny region because the queried table — global coastline
-`water_polygons` (~1.2 GB) — is the **same size regardless of region**. Note this ~740x is
-a *single query*; But ~150x is a *whole tile render* (dozens of such queries). Same mechanism (`index scan` vs `seq scan`), different metric. The index itself is `indexes.sql` from osm-carto, which the image runs automatically at import.
+`water_polygons` (~1.2 GB) — is the **same size regardless of region**. Note this ~740x is a single query, while the ~150x from the article is a whole tile render. Same mechanism (`index scan` vs `seq scan`), different metric. The index itself is `indexes.sql` from osm-carto, which the image runs automatically at import.
 
 **Render benchmark — on-demand vs cache:** `make render-benchmark` fetches a 10x10 tile block at z13 (not pre-rendered) twice — the first pass renders on demand, the second hits the disk cache:
 
@@ -98,7 +102,9 @@ make PBF_URL=https://download.geofabrik.de/europe/germany-latest.osm.pbf BBOX= s
 | Kamchatka bbox (default) | 8 MB   | ~3 GB    | ~5–10 min  | yes            |
 | Germany                  | ~4 GB  | ~40 GB   | ~30–60 min | yes            |
 | USA                      | ~11 GB | ~100 GB+ | hours      | no             |
-| Planet                   | ~70 GB | ~1.7 TB  | ~5 days    | server only    |
+| Planet                   | ~70 GB | ~1.7 TB  | ~5 days*   | server only    |
+
+_* Planet numbers are from the article's setup (HDD, single-threaded, no flat-nodes)_
 
 
 ## Layout

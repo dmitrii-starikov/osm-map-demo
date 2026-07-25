@@ -3,8 +3,8 @@
 A self-hosted OpenStreetMap raster tile server for the Kamchatka peninsula, shown as a small Leaflet web map. Built on the all-in-one image [`overv/openstreetmap-tile-server`](https://github.com/Overv/openstreetmap-tile-server) _(renderd + mod_tile + osm-carto + PostgreSQL/PostGIS in one container)_ plus our baked config with nginx frontend.
 
 This is the hands-on companion for the articles:
-- [Part I]()
-- [Part II]()
+- [Part I](https://vaiti.io/kak-ustroen-sobstvennyj-server-kart-na-openstreetmap/)
+- [Part II](https://vaiti.io/osm-na-planete-czelikom-zhelezo-import-i-pochemu-eto-zanimaet-nedeli/)
 
 ---
 
